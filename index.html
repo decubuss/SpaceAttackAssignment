@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Space Attack</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: #050816;
+      color: #f4f7ff;
+      font-family: Arial, sans-serif;
+    }
+    .start-screen {
+      width: min(92vw, 760px);
+      min-height: min(80vh, 560px);
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 48px 24px;
+      border: 1px solid #344879;
+      border-radius: 20px;
+      background: radial-gradient(circle at 50% 20%, #162c5d 0, #0b1430 42%, #070b1d 100%);
+      box-shadow: 0 0 60px #152c6333, inset 0 0 40px #0006;
+    }
+    .content { display: grid; gap: 24px; justify-items: center; }
+    .eyebrow { margin: 0; color: #6ee7ff; letter-spacing: .3em; text-transform: uppercase; font-size: .78rem; }
+    h1 { margin: 0; font-size: clamp(3rem, 10vw, 6.5rem); letter-spacing: .08em; text-shadow: 0 0 22px #53d9ff99; }
+    .tagline { margin: 0; color: #b9c7e8; font-size: 1.1rem; }
+    #play-button {
+      border: 0;
+      border-radius: 999px;
+      padding: 15px 52px;
+      color: #061126;
+      background: #6ee7ff;
+      font: inherit;
+      font-weight: 800;
+      letter-spacing: .12em;
+      cursor: pointer;
+      box-shadow: 0 0 24px #6ee7ff66;
+    }
+    #play-button:hover, #play-button:focus-visible { background: #b2f3ff; transform: translateY(-2px); outline: 3px solid #fff6; outline-offset: 4px; }
+    .controls { margin: 0; color: #899ac4; font-size: .9rem; }
+    .hidden { display: none !important; }
+    #game-screen { width: min(92vw, 900px); }
+    .hud { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; color: #b9c7e8; font-weight: 700; }
+    #level { color: #6ee7ff; }
+    #game-canvas { display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid #344879; border-radius: 12px; background: #050816; box-shadow: 0 0 35px #152c6355; }
+    .game-help { margin: 12px 0 0; color: #899ac4; text-align: center; font-size: .9rem; }
+    #end-screen { width: min(92vw, 760px); min-height: min(80vh, 560px); display: grid; place-items: center; text-align: center; padding: 48px 24px; border: 1px solid #344879; border-radius: 20px; background: radial-gradient(circle at 50% 20%, #351d4d 0, #17132f 42%, #070b1d 100%); }
+    .end-content { display: grid; gap: 22px; justify-items: center; }
+    .end-content h2 { margin: 0; font-size: clamp(2.5rem, 8vw, 5rem); letter-spacing: .08em; }
+    .final-score, .high-score { margin: 0; color: #b9c7e8; font-size: 1.2rem; }
+    .final-score span, .high-score span { color: #6ee7ff; font-weight: 800; }
+    #restart-button { border: 0; border-radius: 999px; padding: 15px 40px; color: #061126; background: #6ee7ff; font: inherit; font-weight: 800; letter-spacing: .12em; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <main class="start-screen" aria-labelledby="game-title">
+    <div class="content">
+      <p class="eyebrow">Incoming transmission</p>
+      <h1 id="game-title">SPACE ATTACK</h1>
+      <p class="tagline">Defend the stars.</p>
+      <button id="play-button" type="button">PLAY</button>
+      <p class="controls">Arrow keys to move · Spacebar to fire</p>
+    </div>
+  </main>
+  <main id="game-screen" class="hidden" aria-label="Space Attack game">
+    <div class="hud"><span id="score">SCORE: 0</span><span id="level">LEVEL 1</span><span id="lives">LIVES: 3</span></div>
+    <canvas id="game-canvas" width="960" height="540"></canvas>
+    <p class="game-help">← → Move · Spacebar Fire</p>
+  </main>
+  <main id="end-screen" class="hidden" aria-labelledby="game-over-title">
+    <div class="end-content">
+      <p class="eyebrow">Transmission ended</p>
+      <h2 id="game-over-title">GAME OVER</h2>
+      <p class="final-score">SCORE: <span id="final-score">0</span></p>
+      <p class="high-score">HIGH SCORE: <span id="high-score">0</span></p>
+      <button id="restart-button" type="button">RESTART</button>
+    </div>
+  </main>
+  <script src="game-parameters.js"></script>
+  <script>
+    const parameters = window.GAME_PARAMETERS;
+    const startScreen = document.querySelector('.start-screen');
+    const gameScreen = document.querySelector('#game-screen');
+    const endScreen = document.querySelector('#end-screen');
+    const playButton = document.querySelector('#play-button');
+    const restartButton = document.querySelector('#restart-button');
+    const canvas = document.querySelector('#game-canvas');
+    canvas.width = parameters.screen.width;
+    canvas.height = parameters.screen.height;
+    const context = canvas.getContext('2d');
+    const stars = Array.from({ length: 180 }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      size: Math.random() < 0.85 ? 1 : 2,
+      brightness: 0.25 + Math.random() * 0.7
+    }));
+    const scoreLabel = document.querySelector('#score');
+    const livesLabel = document.querySelector('#lives');
+    const finalScoreLabel = document.querySelector('#final-score');
+    const highScoreLabel = document.querySelector('#high-score');
+    const keys = new Set();
+    const player = { x: canvas.width / 2, y: canvas.height - 48, width: 42, height: 28, speed: parameters.player.speed };
+    const enemyWidth = 34;
+    const enemyHeight = 24;
+    const enemyHorizontalSpeed = parameters.enemy.horizontalSpeed;
+    const enemyVerticalSpeed = parameters.enemy.verticalSpeed;
+    const enemyHorizontalSpacing = parameters.level.horizontalSpacing;
+    const enemyVerticalSpacing = parameters.level.verticalSpacing;
+    const enemyShootingCooldown = parameters.enemy.firingCooldown;
+    const formationFireRateIncreasePerLevel = parameters.level.formationFireRateIncrease;
+    const separatedEnemyShootingCountdown = parameters.enemy.separatedShootingCountdown;
+    const breakawayEnemySpeedMultiplier = parameters.enemy.breakawaySpeedMultiplier;
+    let level = 1;
+    let enemies = [];
+    let enemyDirection = 1;
+    const projectiles = [];
+    const enemyProjectiles = [];
+    const explosions = [];
+    let score = 0;
+    let lives = parameters.player.startingLives;
+    let formationShootingCountdown = enemyShootingCooldown;
+    let breakawayCountdown = 4;
+    let playerAlive = true;
+    let playerDeathAt = null;
+
+    function showEndScreen() {
+      cancelAnimationFrame(animationId);
+      animationId = null;
+      finalScoreLabel.textContent = score;
+      const highScore = Math.max(Number(localStorage.getItem('spaceAttackHighScore') || 0), score);
+      localStorage.setItem('spaceAttackHighScore', highScore);
+      highScoreLabel.textContent = highScore;
+      gameScreen.classList.add('hidden');
+      endScreen.classList.remove('hidden');
+    }
+
+    function restartGame() {
+      score = 0;
+      lives = parameters.player.startingLives;
+      playerAlive = true;
+      playerDeathAt = null;
+      level = 1;
+      scoreLabel.textContent = 'SCORE: 0';
+      livesLabel.textContent = `LIVES: ${parameters.player.startingLives}`;
+      projectiles.length = 0;
+      enemyProjectiles.length = 0;
+      explosions.length = 0;
+      player.x = canvas.width / 2;
+      createLevelEnemies();
+      endScreen.classList.add('hidden');
+      gameScreen.classList.remove('hidden');
+      animationId = requestAnimationFrame(frame);
+    }
+
+    function createLevelEnemies() {
+      enemies = [];
+      const rows = Math.min(parameters.level.startingRows + level - 1, parameters.level.maximumRows);
+      const formationWidth = (parameters.level.columns - 1) * enemyHorizontalSpacing;
+      const leftEdge = (canvas.width - formationWidth) / 2;
+      for (let row = 0; row < rows; row += 1) {
+        for (let column = 0; column < parameters.level.columns; column += 1) {
+          enemies.push({ x: leftEdge + column * enemyHorizontalSpacing, y: 72 + row * enemyVerticalSpacing, width: enemyWidth, height: enemyHeight, alive: true, separated: false, direction: 1, shootingCountdown: separatedEnemyShootingCountdown });
+        }
+      }
+      enemyDirection = 1;
+      formationShootingCountdown = enemyShootingCooldown / Math.pow(1 + formationFireRateIncreasePerLevel, level - 1);
+      breakawayCountdown = 4;
+      document.querySelector('#level').textContent = `LEVEL ${level}`;
+    }
+
+    function createEnemyProjectile(shooter) {
+      const accuracy = Math.min(1, (level - 1) * parameters.level.enemyAccuracyIncreasePerLevel);
+      const randomTarget = Math.random() * canvas.width;
+      const targetX = randomTarget + (player.x - randomTarget) * accuracy;
+      const targetY = player.y;
+      const dx = targetX - shooter.x;
+      const dy = targetY - shooter.y;
+      const distance = Math.hypot(dx, dy) || 1;
+      const speed = parameters.enemy.projectileSpeed;
+      enemyProjectiles.push({ x: shooter.x, y: shooter.y + shooter.height / 2, vx: dx / distance * speed, vy: dy / distance * speed });
+    }
+
+    createLevelEnemies();
+    let lastFrame = 0;
+    let animationId;
+
+    function drawScene() {
+      context.fillStyle = '#050816';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = '#ffffff';
+      stars.forEach((star) => {
+        context.globalAlpha = star.brightness;
+        context.fillRect(star.x, star.y, star.size, star.size);
+      });
+      context.globalAlpha = 1;
+      if (playerAlive) {
+        context.fillStyle = '#6ee7ff';
+        context.beginPath();
+        context.moveTo(player.x, player.y - player.height / 2);
+        context.lineTo(player.x - player.width / 2, player.y + player.height / 2);
+        context.lineTo(player.x, player.y + player.height / 4);
+        context.lineTo(player.x + player.width / 2, player.y + player.height / 2);
+        context.closePath();
+        context.fill();
+      }
+      enemies.forEach((enemy) => {
+        if (!enemy.alive) return;
+        context.fillStyle = '#ff5d8f';
+        context.beginPath();
+        context.moveTo(enemy.x, enemy.y + enemy.height / 2);
+        context.lineTo(enemy.x - enemy.width / 2, enemy.y - enemy.height / 2);
+        context.lineTo(enemy.x, enemy.y - enemy.height / 5);
+        context.lineTo(enemy.x + enemy.width / 2, enemy.y - enemy.height / 2);
+        context.closePath();
+        context.fill();
+      });
+      context.fillStyle = '#ffdf70';
+      projectiles.forEach((projectile) => context.fillRect(projectile.x - 2, projectile.y, 4, 12));
+      context.fillStyle = '#ff9b70';
+      enemyProjectiles.forEach((projectile) => context.fillRect(projectile.x - 2, projectile.y, 4, 12));
+      explosions.forEach((explosion) => {
+        const progress = explosion.elapsed / explosion.duration;
+        const radius = 8 + progress * 30;
+        context.globalAlpha = 1 - progress;
+        context.fillStyle = explosion.color;
+        context.beginPath();
+        context.arc(explosion.x, explosion.y, radius, 0, Math.PI * 2);
+        context.fill();
+        context.globalAlpha = 1;
+      });
+    }
+
+    function frame(timestamp) {
+      const delta = Math.min((timestamp - lastFrame) / 1000, 0.05);
+      lastFrame = timestamp;
+      if (playerAlive && keys.has('ArrowLeft')) player.x -= player.speed * delta;
+      if (playerAlive && keys.has('ArrowRight')) player.x += player.speed * delta;
+      player.x = Math.max(player.width / 2, Math.min(canvas.width - player.width / 2, player.x));
+      breakawayCountdown -= delta;
+      if (breakawayCountdown <= 0) {
+        const formationEnemies = enemies.filter((enemy) => enemy.alive && !enemy.separated);
+        if (formationEnemies.length) {
+          const breakaway = formationEnemies[Math.floor(Math.random() * formationEnemies.length)];
+          breakaway.separated = true;
+          breakaway.direction = Math.random() < 0.5 ? -1 : 1;
+        }
+        breakawayCountdown = 7 + Math.random() * 4;
+      }
+
+      const livingEnemies = enemies.filter((enemy) => enemy.alive && !enemy.separated);
+      const casualties = enemies.length - enemies.filter((enemy) => enemy.alive).length;
+      const formationSpeedMultiplier = 1 + casualties * parameters.level.enemySpeedBuildupPerCasualty;
+      const formationHorizontalSpeed = enemyHorizontalSpeed * formationSpeedMultiplier;
+      const formationVerticalSpeed = enemyVerticalSpeed * formationSpeedMultiplier;
+      const nextLeft = livingEnemies.some((enemy) => enemy.x + enemyDirection * formationHorizontalSpeed * delta <= enemy.width / 2);
+      const nextRight = livingEnemies.some((enemy) => enemy.x + enemyDirection * formationHorizontalSpeed * delta >= canvas.width - enemy.width / 2);
+      if (nextLeft || nextRight) {
+        enemyDirection *= -1;
+        livingEnemies.forEach((enemy) => { enemy.y += formationVerticalSpeed; });
+      }
+      livingEnemies.forEach((enemy) => { enemy.x += formationHorizontalSpeed * enemyDirection * delta; });
+      enemies.forEach((enemy) => {
+        if (!enemy.alive || !enemy.separated) return;
+        enemy.x += enemyHorizontalSpeed * breakawayEnemySpeedMultiplier * enemy.direction * delta;
+        enemy.y += enemyVerticalSpeed * breakawayEnemySpeedMultiplier * delta;
+        if (enemy.x <= enemy.width / 2 || enemy.x >= canvas.width - enemy.width / 2) enemy.direction *= -1;
+      });
+      projectiles.forEach((projectile) => { projectile.y -= projectile.speed * delta; });
+      enemyProjectiles.forEach((projectile) => { projectile.x += projectile.vx * delta; projectile.y += projectile.vy * delta; });
+      explosions.forEach((explosion) => { explosion.elapsed += delta; });
+      while (explosions.length && explosions[0].elapsed >= explosions[0].duration) explosions.shift();
+
+      formationShootingCountdown -= delta;
+      if (formationShootingCountdown <= 0 && livingEnemies.length) {
+        const shooter = livingEnemies[Math.floor(Math.random() * livingEnemies.length)];
+        createEnemyProjectile(shooter);
+        formationShootingCountdown = enemyShootingCooldown / Math.pow(1 + formationFireRateIncreasePerLevel, level - 1);
+      }
+      enemies.forEach((enemy) => {
+        if (!enemy.alive || !enemy.separated) return;
+        enemy.shootingCountdown -= delta;
+        if (enemy.shootingCountdown <= 0) {
+          createEnemyProjectile(enemy);
+          enemy.shootingCountdown = separatedEnemyShootingCountdown;
+        }
+      });
+
+      enemyProjectiles.forEach((projectile) => {
+        const hitPlayer = Math.abs(projectile.x - player.x) < player.width && Math.abs(projectile.y - player.y) < player.height;
+        if (hitPlayer) {
+          projectile.y = canvas.height + 100;
+          explosions.push({ x: player.x, y: player.y, elapsed: 0, duration: 0.35, color: '#6ee7ff' });
+          lives = Math.max(0, lives - 1);
+          livesLabel.textContent = `LIVES: ${lives}`;
+          if (lives === 0) playerAlive = false;
+        }
+      });
+      enemies.forEach((enemy) => {
+        if (!enemy.alive) return;
+        projectiles.forEach((projectile) => {
+          const hitEnemy = Math.abs(projectile.x - enemy.x) < enemy.width && Math.abs(projectile.y - enemy.y) < enemy.height;
+          if (hitEnemy) {
+            explosions.push({ x: enemy.x, y: enemy.y, elapsed: 0, duration: 0.35, color: '#ff5d8f' });
+            enemy.alive = false;
+            projectile.y = -100;
+            score += parameters.level.pointsPerEnemy;
+            scoreLabel.textContent = `SCORE: ${score}`;
+          }
+        });
+        const hitPlayer = Math.abs(player.x - enemy.x) < (player.width + enemy.width) / 2 && Math.abs(player.y - enemy.y) < (player.height + enemy.height) / 2;
+        if (lives > 0 && hitPlayer) {
+          explosions.push({ x: player.x, y: player.y, elapsed: 0, duration: 0.35, color: '#6ee7ff' });
+          lives = Math.max(0, lives - 1);
+          livesLabel.textContent = `LIVES: ${lives}`;
+          if (lives === 0) playerAlive = false;
+          enemy.alive = false;
+        }
+      });
+      if (lives === 0) {
+        if (playerDeathAt === null) playerDeathAt = timestamp;
+        if (timestamp - playerDeathAt >= parameters.player.deathScreenDelay * 1000) {
+          showEndScreen();
+          return;
+        }
+        drawScene();
+        animationId = requestAnimationFrame(frame);
+        return;
+      }
+      if (enemies.length && enemies.every((enemy) => !enemy.alive)) {
+        level += 1;
+        createLevelEnemies();
+      }
+      while (projectiles.length && projectiles[0].y < -20) projectiles.shift();
+      while (enemyProjectiles.length && enemyProjectiles[0].y > canvas.height + 20) enemyProjectiles.shift();
+      drawScene();
+      animationId = requestAnimationFrame(frame);
+    }
+
+    playButton.addEventListener('click', () => {
+      startScreen.classList.add('hidden');
+      gameScreen.classList.remove('hidden');
+      if (!animationId) animationId = requestAnimationFrame(frame);
+    });
+    restartButton.addEventListener('click', restartGame);
+
+    window.addEventListener('keydown', (event) => {
+      if (['ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) event.preventDefault();
+      keys.add(event.key);
+      if (playerAlive && event.code === 'Space' && !event.repeat) projectiles.push({ x: player.x, y: player.y - player.height / 2, speed: parameters.player.projectileSpeed });
+    });
+    window.addEventListener('keyup', (event) => keys.delete(event.key));
+  </script>
+</body>
+</html>
